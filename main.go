@@ -58,6 +58,19 @@ func main() {
 			maxSessions, _ = strconv.Atoi(v)
 		}
 		handler := NewHTTPHandler(origins, maxSessions)
+		if pinned := os.Getenv("UMAMI_URL"); pinned != "" {
+			handler.SetPinnedHost(pinned)
+			log.Printf("Pinned to Umami host %s; client-supplied hosts are ignored", pinned)
+		}
+		ttl := time.Hour
+		if v := os.Getenv("SESSION_TTL"); v != "" {
+			d, err := time.ParseDuration(v)
+			if err != nil || d <= 0 {
+				log.Fatalf("Invalid SESSION_TTL %q: use a Go duration like 30m or 2h", v)
+			}
+			ttl = d
+		}
+		handler.StartSessionReaper(ttl)
 		mux := http.NewServeMux()
 		mux.Handle("/mcp", handler)
 		mux.HandleFunc("/.well-known/mcp/server-card.json", handler.handleServerCard)

@@ -11,19 +11,62 @@ import (
 	"strings"
 	"sync"
 	"sync/atomic"
+	"time"
 )
 
 const maxBodySize = 1 << 20 // 1 MB
 
 type session struct {
-	server *MCPServer
+	server   *MCPServer
+	lastUsed atomic.Int64 // unix nanoseconds
 }
+
+func (s *session) touch() { s.lastUsed.Store(time.Now().UnixNano()) }
 
 type HTTPHandler struct {
 	sessions       sync.Map
 	sessionCount   atomic.Int64
 	maxSessions    int
 	allowedOrigins []string
+
+	// pinnedHost, when set, overrides any client-supplied Umami host so the
+	// server can only ever talk to this one instance.
+	pinnedHost string
+}
+
+// SetPinnedHost restricts all sessions to a single Umami instance.
+func (h *HTTPHandler) SetPinnedHost(host string) { h.pinnedHost = host }
+
+// StartSessionReaper removes sessions idle longer than ttl. Without it,
+// sessions from clients that never send DELETE accumulate until MAX_SESSIONS.
+func (h *HTTPHandler) StartSessionReaper(ttl time.Duration) {
+	interval := time.Minute
+	if ttl < 2*interval {
+		interval = ttl / 2
+	}
+	go func() {
+		ticker := time.NewTicker(interval)
+		defer ticker.Stop()
+		for range ticker.C {
+			h.reapIdle(ttl)
+		}
+	}()
+}
+
+func (h *HTTPHandler) reapIdle(ttl time.Duration) int {
+	cutoff := time.Now().Add(-ttl).UnixNano()
+	reaped := 0
+	h.sessions.Range(func(key, val any) bool {
+		if val.(*session).lastUsed.Load() < cutoff && h.sessions.CompareAndDelete(key, val) {
+			h.sessionCount.Add(-1)
+			reaped++
+		}
+		return true
+	})
+	if reaped > 0 {
+		log.Printf("Reaped %d idle session(s)", reaped)
+	}
+	return reaped
 }
 
 func NewHTTPHandler(allowedOrigins []string, maxSessions int) *HTTPHandler {
@@ -121,6 +164,7 @@ func (h *HTTPHandler) handlePost(w http.ResponseWriter, r *http.Request) {
 	}
 
 	sess := val.(*session)
+	sess.touch()
 	resp := sess.server.HandleRequest(req)
 
 	w.Header().Set("Content-Type", "application/json")
@@ -184,6 +228,9 @@ const missingCredsMsg = "Missing required credentials: provide X-Umami-Host plus
 
 func (h *HTTPHandler) handleInitialize(w http.ResponseWriter, r *http.Request, req Request) {
 	creds := extractUmamiCreds(r)
+	if h.pinnedHost != "" {
+		creds.host = h.pinnedHost
+	}
 
 	if !creds.valid() {
 		writeJSONRPCError(w, req.ID, &Error{
@@ -220,7 +267,9 @@ func (h *HTTPHandler) handleInitialize(w http.ResponseWriter, r *http.Request, r
 
 	sessionID := generateSessionID()
 	srv := NewMCPServer(client)
-	h.sessions.Store(sessionID, &session{server: srv})
+	sess := &session{server: srv}
+	sess.touch()
+	h.sessions.Store(sessionID, sess)
 	h.sessionCount.Add(1)
 
 	resp := srv.HandleRequest(req)

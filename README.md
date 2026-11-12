@@ -411,6 +411,9 @@ For clients that use a `command` field (Claude Desktop, Cursor, etc.):
 | `PORT` | `8080` | HTTP server port |
 | `ALLOWED_ORIGINS` | `*` | Comma-separated CORS allowed origins |
 | `MAX_SESSIONS` | `1000` | Maximum concurrent HTTP sessions |
+| `SESSION_TTL` | `1h` | HTTP mode: drop sessions idle longer than this (Go duration, e.g. `30m`) |
+
+**HTTP mode host pinning:** if `UMAMI_URL` is set in HTTP mode, every session uses that host and any `X-Umami-Host` header is ignored. Clients then only send `X-Umami-Username`/`X-Umami-Password` (or `X-Umami-Api-Key`), and the server can't be used to reach any other Umami instance.
 
 ### Config File
 

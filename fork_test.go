@@ -15,7 +15,6 @@ func TestHTTP_PinnedHostIgnoresClientHost(t *testing.T) {
 	handler := NewHTTPHandler(nil, 0)
 	handler.SetPinnedHost(umami.URL)
 
-	// Client points at a host that doesn't exist; the pinned host must win.
 	sessionID := initializeSession(t, handler, "http://attacker.invalid")
 	if sessionID == "" {
 		t.Fatal("expected a session against the pinned host")
@@ -49,7 +48,6 @@ func TestHTTP_ReapIdleSessions(t *testing.T) {
 	stale := initializeSession(t, handler, umami.URL)
 	fresh := initializeSession(t, handler, umami.URL)
 
-	// Backdate one session past the TTL.
 	val, _ := handler.sessions.Load(stale)
 	val.(*session).lastUsed.Store(time.Now().Add(-2 * time.Hour).UnixNano())
 
@@ -66,6 +64,5 @@ func TestHTTP_ReapIdleSessions(t *testing.T) {
 		t.Errorf("sessionCount = %d, want 1", got)
 	}
 
-	// Freed slot means a new session fits under MAX_SESSIONS=2 again.
 	_ = initializeSession(t, handler, umami.URL)
 }

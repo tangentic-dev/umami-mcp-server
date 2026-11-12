@@ -18,7 +18,7 @@ const maxBodySize = 1 << 20 // 1 MB
 
 type session struct {
 	server   *MCPServer
-	lastUsed atomic.Int64 // unix nanoseconds
+	lastUsed atomic.Int64
 }
 
 func (s *session) touch() { s.lastUsed.Store(time.Now().UnixNano()) }
@@ -28,17 +28,11 @@ type HTTPHandler struct {
 	sessionCount   atomic.Int64
 	maxSessions    int
 	allowedOrigins []string
-
-	// pinnedHost, when set, overrides any client-supplied Umami host so the
-	// server can only ever talk to this one instance.
-	pinnedHost string
+	pinnedHost     string
 }
 
-// SetPinnedHost restricts all sessions to a single Umami instance.
 func (h *HTTPHandler) SetPinnedHost(host string) { h.pinnedHost = host }
 
-// StartSessionReaper removes sessions idle longer than ttl. Without it,
-// sessions from clients that never send DELETE accumulate until MAX_SESSIONS.
 func (h *HTTPHandler) StartSessionReaper(ttl time.Duration) {
 	interval := time.Minute
 	if ttl < 2*interval {

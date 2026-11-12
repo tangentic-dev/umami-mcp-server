@@ -227,6 +227,8 @@ func (h *HTTPHandler) handleInitialize(w http.ResponseWriter, r *http.Request, r
 	}
 
 	if !creds.valid() {
+		log.Printf("Initialize rejected: missing credentials (host=%t username=%t password=%t apiKey=%t)",
+			creds.host != "", creds.username != "", creds.password != "", creds.apiKey != "")
 		writeJSONRPCError(w, req.ID, &Error{
 			Code:    -32602,
 			Message: missingCredsMsg,
@@ -252,6 +254,7 @@ func (h *HTTPHandler) handleInitialize(w http.ResponseWriter, r *http.Request, r
 		client.teamID = teamID
 	}
 	if err := client.Authenticate(); err != nil {
+		log.Printf("Initialize rejected: authentication against %s failed: %v", creds.host, err)
 		writeJSONRPCError(w, req.ID, &Error{
 			Code:    -32603,
 			Message: fmt.Sprintf("Authentication failed: %v", err),
